@@ -334,17 +334,10 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders },
     );
   } catch (error) {
-    console.error("Flexible cat analysis failed.", error);
+    console.error("Flexible cat analysis failed. Falling back to local plan.", error);
     return Response.json(
-      {
-        analysisMode: "error",
-        imageHash: hash,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Flexible cat analysis failed.",
-      },
-      { status: 500, headers: noStoreHeaders },
+      mockFlexibleAnalysis(hash),
+      { headers: noStoreHeaders },
     );
   }
 }

@@ -63,11 +63,18 @@ function jsonSuccess(analysis: FlexibleCatAnalysis, message: string) {
 
 async function tryFixedTemplate(request: Request, photo: UploadedPhoto) {
   const url = new URL("/api/classify-fixed-template", request.url);
-  const response = await fetch(url, {
-    method: "POST",
-    body: createPhotoFormData(photo),
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      body: createPhotoFormData(photo),
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.error("Fixed-template classification request failed.", error);
+    return null;
+  }
 
   if (!response.ok) {
     return null;

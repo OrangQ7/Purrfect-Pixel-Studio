@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { createEditableAnalysisFromFixedOutput } from "@/lib/editableFixedOutputPlans";
 import { isFixedOutputTemplateId } from "@/lib/fixedOutputTemplates";
 import {
@@ -96,22 +98,50 @@ async function tryFixedTemplate(request: Request, photo: UploadedPhoto) {
   );
 }
 
+function createFallbackFlexiblePlan(photo: UploadedPhoto, reason: string) {
+  const imageHash = createHash("sha256")
+    .update(photo.bytes)
+    .digest("hex")
+    .slice(0, 12);
+
+  return sanitizeFlexibleCatAnalysis(
+    {
+      analysisMode: "mock",
+      imageHash,
+      modeRecommendation: "flexible_template",
+      description: `Local fallback render used because ${reason}.`,
+      confidence: 0.35,
+    },
+    imageHash,
+  );
+}
+
 async function createFlexiblePlan(request: Request, photo: UploadedPhoto) {
   const url = new URL("/api/analyze-flexible-cat", request.url);
-  const response = await fetch(url, {
-    method: "POST",
-    body: createPhotoFormData(photo),
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      body: createPhotoFormData(photo),
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.error("Flexible analysis request failed.", error);
+    return createFallbackFlexiblePlan(
+      photo,
+      "the coat analyzer could not be reached",
+    );
+  }
 
   const body = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const error =
-      body && typeof body.error === "string"
-        ? body.error
-        : "Could not analyze the cat coat.";
-    throw new Error(error);
+    console.error("Flexible analysis route returned non-ok.", body);
+    return createFallbackFlexiblePlan(
+      photo,
+      "the coat analyzer was unavailable",
+    );
   }
 
   return sanitizeFlexibleCatAnalysis(body, "flexible");

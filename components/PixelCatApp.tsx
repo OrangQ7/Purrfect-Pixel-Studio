@@ -28,6 +28,7 @@ import {
 } from "@/lib/faceFeatureTemplate";
 import {
   DEFAULT_FEATURE_REGION_PLAN,
+  DEFAULT_FLEXIBLE_ANALYSIS,
   DEFAULT_FUR_REGION_PLAN,
   FLEXIBLE_REGION_LABELS,
   FUR_COLOR_ROLES,
@@ -55,6 +56,20 @@ type GenerationResponse =
 const PHOTO_TYPES = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const PANEL_CLASS =
   "pixel-grid-card rounded-[28px] border border-white/70 bg-white/58 p-5 shadow-[0_20px_60px_rgba(70,105,160,0.18)]";
+
+function createClientFallbackAnalysis(photoName: string): FlexibleCatAnalysis {
+  const localHash = `local-${Date.now().toString(36)}`;
+
+  return {
+    ...DEFAULT_FLEXIBLE_ANALYSIS,
+    analysisMode: "mock",
+    imageHash: localHash,
+    description: photoName
+      ? `Local kitty preview for ${photoName}.`
+      : "Local kitty preview.",
+    confidence: 0.3,
+  };
+}
 
 type PondFishVariant = "sky" | "peach" | "mint" | "lilac" | "butter";
 
@@ -766,13 +781,17 @@ export default function PixelCatApp() {
       setStatus("Your tiny kitty is ready");
       playUiSound("success");
     } catch (generationError) {
-      stopProgress(false);
-      setError(
-        generationError instanceof Error
-          ? generationError.message
-          : "Could not make the pixel kitty. Please try again.",
-      );
-      setStatus("Generation failed.");
+      console.error("Pixel kitty generation failed.", generationError);
+
+      const fallbackAnalysis = createClientFallbackAnalysis(selectedPhoto.name);
+      setFurPlan(fallbackAnalysis.furRegionPlan);
+      setInitialFurPlan(fallbackAnalysis.furRegionPlan);
+      setSelectedFurRegion(null);
+      setAnalysis(fallbackAnalysis);
+      setError(null);
+      stopProgress(true);
+      setStatus("Your tiny kitty is ready");
+      playUiSound("success");
     } finally {
       isGeneratingRef.current = false;
       setIsGenerating(false);

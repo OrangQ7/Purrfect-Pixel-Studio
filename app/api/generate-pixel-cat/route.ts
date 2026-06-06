@@ -82,7 +82,14 @@ async function tryFixedTemplate(request: Request, photo: UploadedPhoto) {
     return null;
   }
 
-  const data = (await response.json()) as FixedClassifierResponse;
+  const data = (await response.json().catch((error) => {
+    console.error("Fixed-template classification returned invalid JSON.", error);
+    return null;
+  })) as FixedClassifierResponse | null;
+
+  if (!data) {
+    return null;
+  }
 
   if (!isFixedOutputTemplateId(data.templateId)) {
     return null;

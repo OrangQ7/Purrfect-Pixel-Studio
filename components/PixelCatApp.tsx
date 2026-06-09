@@ -865,8 +865,8 @@ export default function PixelCatApp() {
             ? "Save sheet opened, and your kitty is in the gallery."
             : "Downloaded and saved to your gallery."
           : saveResult === "shared"
-            ? "Save sheet opened. Sign in to keep it in the gallery."
-            : "Download started. Sign in to keep it in the gallery.",
+            ? "Save sheet opened. Sign in first to add it to the gallery."
+            : "Download started. Sign in first to add it to the gallery.",
       );
       playUiSound("success");
     } catch (saveError) {

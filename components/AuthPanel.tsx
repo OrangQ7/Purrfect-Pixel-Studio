@@ -118,15 +118,28 @@ export function AuthPanel({
       const redirectPath = window.location.pathname.startsWith("/admin")
         ? "/admin"
         : "/pixel-cat";
-      const { error } = await supabase.auth.signInWithOtp({
-        email: trimmedEmail,
-        options: {
-          emailRedirectTo: `${window.location.origin}${redirectPath}`,
+      const response = await fetch("/api/auth/send-login-link", {
+        body: JSON.stringify({
+          email: trimmedEmail,
+          redirectPath,
+        }),
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
         },
+        method: "POST",
       });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: true }
+        | { ok: false; error?: string }
+        | null;
 
-      if (error) {
-        setMessage(error.message);
+      if (!response.ok || !data?.ok) {
+        setMessage(
+          data?.ok === false && data.error
+            ? data.error
+            : "Could not send the login link.",
+        );
         return;
       }
 

@@ -63,6 +63,7 @@ const disconnectedAuth: AuthSnapshot = {
 };
 
 const PHOTO_TYPES = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const GENERATION_REQUEST_TIMEOUT_MS = 30_000;
 const PANEL_CLASS =
   "pixel-grid-card rounded-[28px] border border-white/70 bg-white/58 p-5 shadow-[0_20px_60px_rgba(70,105,160,0.18)]";
 
@@ -766,11 +767,23 @@ export default function PixelCatApp() {
         formData.append("photoFileName", selectedPhoto.name);
       }
 
-      const response = await fetch("/api/generate-pixel-cat", {
-        method: "POST",
-        body: formData,
-        cache: "no-store",
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(
+        () => controller.abort(),
+        GENERATION_REQUEST_TIMEOUT_MS,
+      );
+      let response: Response;
+
+      try {
+        response = await fetch("/api/generate-pixel-cat", {
+          method: "POST",
+          body: formData,
+          cache: "no-store",
+          signal: controller.signal,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
 
       const data = (await response.json().catch(() => null)) as
         | GenerationResponse
@@ -823,17 +836,19 @@ export default function PixelCatApp() {
       const saveResult = await rendererRef.current.downloadPng();
       localSaveResult = saveResult;
       let uploadedToGallery = false;
+      const analysisForSave =
+        analysis ?? createClientFallbackAnalysis(photo?.name ?? "edited kitty");
 
-      if (authSnapshot.accessToken && analysis) {
+      if (authSnapshot.accessToken) {
         const formData = new FormData();
 
         formData.append("image", generatedImageBlob, "my-pixel-kitty.png");
-        formData.append("analysis", JSON.stringify(analysis));
+        formData.append("analysis", JSON.stringify(analysisForSave));
         formData.append("furPlan", JSON.stringify(furPlan));
         formData.append("accessoryPreset", accessoryPreset);
         formData.append("faceFeaturePreset", faceFeaturePreset);
         formData.append("backgroundColor", backgroundColor);
-        formData.append("sourcePhotoName", photo?.name ?? "");
+        formData.append("sourcePhotoName", photo?.name ?? "edited-kitty.png");
 
         const response = await fetch("/api/generated-images", {
           body: formData,

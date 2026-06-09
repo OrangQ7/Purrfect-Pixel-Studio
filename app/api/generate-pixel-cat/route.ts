@@ -11,10 +11,14 @@ import { readUploadedPhotoPayload } from "@/lib/serverUploadedPhoto";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 30;
 
 const noStoreHeaders = {
   "Cache-Control": "no-store, no-cache, must-revalidate",
 };
+
+const FIXED_CLASSIFIER_TIMEOUT_MS = 8_000;
+const FLEXIBLE_ANALYSIS_TIMEOUT_MS = 18_000;
 
 type FixedClassifierResponse = {
   analysisMode?: "openai" | "error";
@@ -63,22 +67,55 @@ function jsonSuccess(analysis: FlexibleCatAnalysis, message: string) {
   );
 }
 
+async function fetchWithTimeout(
+  url: URL,
+  init: RequestInit,
+  timeoutMs: number,
+) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function describeRequestError(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function tryFixedTemplate(request: Request, photo: UploadedPhoto) {
   const url = new URL("/api/classify-fixed-template", request.url);
   let response: Response;
 
   try {
-    response = await fetch(url, {
-      method: "POST",
-      body: createPhotoFormData(photo),
-      cache: "no-store",
-    });
+    response = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        body: createPhotoFormData(photo),
+        cache: "no-store",
+      },
+      FIXED_CLASSIFIER_TIMEOUT_MS,
+    );
   } catch (error) {
-    console.error("Fixed-template classification request failed.", error);
+    console.warn(
+      "Fixed-template classification skipped because it timed out or failed.",
+      describeRequestError(error),
+    );
     return null;
   }
 
   if (!response.ok) {
+    console.warn(
+      "Fixed-template classification skipped after non-ok response.",
+      response.status,
+    );
     return null;
   }
 
@@ -128,16 +165,23 @@ async function createFlexiblePlan(request: Request, photo: UploadedPhoto) {
   let response: Response;
 
   try {
-    response = await fetch(url, {
-      method: "POST",
-      body: createPhotoFormData(photo),
-      cache: "no-store",
-    });
+    response = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        body: createPhotoFormData(photo),
+        cache: "no-store",
+      },
+      FLEXIBLE_ANALYSIS_TIMEOUT_MS,
+    );
   } catch (error) {
-    console.error("Flexible analysis request failed.", error);
+    console.error(
+      "Flexible analysis request failed or timed out.",
+      describeRequestError(error),
+    );
     return createFallbackFlexiblePlan(
       photo,
-      "the coat analyzer could not be reached",
+      "the coat analyzer timed out or could not be reached",
     );
   }
 
@@ -180,11 +224,13 @@ export async function POST(request: Request) {
     const flexibleAnalysis = await createFlexiblePlan(request, uploadedPhoto);
     return jsonSuccess(flexibleAnalysis, "Pixel kitty is ready.");
   } catch (error) {
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "Could not make the pixel kitty. Please try again.",
-      500,
+    console.error("Pixel cat generation fell back after an unexpected error.", error);
+    return jsonSuccess(
+      createFallbackFlexiblePlan(
+        uploadedPhoto,
+        "the generator hit an unexpected error",
+      ),
+      "Pixel kitty is ready.",
     );
   }
 }

@@ -114,21 +114,32 @@ export function AuthPanel({
     setIsSubmitting(true);
     setMessage(null);
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: trimmedEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/pixel-cat`,
-      },
-    });
+    try {
+      const redirectPath = window.location.pathname.startsWith("/admin")
+        ? "/admin"
+        : "/pixel-cat";
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmedEmail,
+        options: {
+          emailRedirectTo: `${window.location.origin}${redirectPath}`,
+        },
+      });
 
-    setIsSubmitting(false);
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
 
-    if (error) {
-      setMessage(error.message);
-      return;
+      setMessage("Magic link sent. Check your inbox.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not reach the account service.",
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setMessage("Magic link sent. Check your inbox.");
   }
 
   async function signOut() {

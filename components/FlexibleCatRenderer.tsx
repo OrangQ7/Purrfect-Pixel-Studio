@@ -30,6 +30,7 @@ import { getPixelCatCanvasMetrics } from "@/lib/pixelCanvasMetrics";
 
 export type FlexibleCatRendererHandle = {
   downloadPng: () => Promise<"downloaded" | "shared">;
+  exportPngBlob: () => Promise<Blob>;
 };
 
 type FlexibleCatRendererProps = {
@@ -718,6 +719,9 @@ export const FlexibleCatRenderer = forwardRef<
 
           return await downloadCanvas(canvas);
         }
+      },
+      async exportPngBlob() {
+        return exportFlexibleCatBlob(config, exportSize);
       },
     }),
     [config, exportSize],

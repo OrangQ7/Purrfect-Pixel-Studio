@@ -6,6 +6,10 @@ const eslintConfig = [
     ignores: [
       ".next/**",
       "**/.next/**",
+      ".agents/**",
+      "**/.agents/**",
+      ".claude/**",
+      "**/.claude/**",
       ".tmp-chrome-cdp*/**",
       "**/.tmp-chrome-cdp*/**",
       "node_modules/**",

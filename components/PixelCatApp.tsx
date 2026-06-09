@@ -14,6 +14,7 @@ import {
   FlexibleCatRenderer,
   type FlexibleCatRendererHandle,
 } from "@/components/FlexibleCatRenderer";
+import { AuthPanel, type AuthSnapshot } from "@/components/AuthPanel";
 import { NamePlateStudio } from "@/components/NamePlateStudio";
 import {
   ACCESSORY_PRESET_IDS,
@@ -52,6 +53,14 @@ type GenerationResponse =
       ok: false;
       error: string;
     };
+
+const disconnectedAuth: AuthSnapshot = {
+  accessToken: null,
+  email: null,
+  isConfigured: false,
+  isReady: false,
+  userId: null,
+};
 
 const PHOTO_TYPES = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 const PANEL_CLASS =
@@ -315,6 +324,8 @@ export default function PixelCatApp() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [studioMode, setStudioMode] = useState<"kitty" | "nameplate">("kitty");
+  const [authSnapshot, setAuthSnapshot] =
+    useState<AuthSnapshot>(disconnectedAuth);
 
   const renderConfig = useMemo<FlexibleRenderConfig>(
     () => ({
@@ -805,18 +816,70 @@ export default function PixelCatApp() {
 
     setIsSaving(true);
     setSaveStatus(null);
+    let localSaveResult: "downloaded" | "shared" | null = null;
 
     try {
+      const generatedImageBlob = await rendererRef.current.exportPngBlob();
       const saveResult = await rendererRef.current.downloadPng();
+      localSaveResult = saveResult;
+      let uploadedToGallery = false;
+
+      if (authSnapshot.accessToken && analysis) {
+        const formData = new FormData();
+
+        formData.append("image", generatedImageBlob, "my-pixel-kitty.png");
+        formData.append("analysis", JSON.stringify(analysis));
+        formData.append("furPlan", JSON.stringify(furPlan));
+        formData.append("accessoryPreset", accessoryPreset);
+        formData.append("faceFeaturePreset", faceFeaturePreset);
+        formData.append("backgroundColor", backgroundColor);
+        formData.append("sourcePhotoName", photo?.name ?? "");
+
+        const response = await fetch("/api/generated-images", {
+          body: formData,
+          cache: "no-store",
+          headers: {
+            Authorization: `Bearer ${authSnapshot.accessToken}`,
+          },
+          method: "POST",
+        });
+        const data = (await response.json().catch(() => null)) as
+          | { ok: true }
+          | { ok: false; error?: string }
+          | null;
+
+        if (!response.ok || !data?.ok) {
+          throw new Error(
+            data?.ok === false && data.error
+              ? data.error
+              : "Could not save to your gallery.",
+          );
+        }
+
+        uploadedToGallery = true;
+      }
 
       setSaveStatus(
-        saveResult === "shared"
-          ? "Save sheet opened. Choose Save Image or Save to Files."
-          : "Download started. Check your Downloads folder.",
+        uploadedToGallery
+          ? saveResult === "shared"
+            ? "Save sheet opened, and your kitty is in the gallery."
+            : "Downloaded and saved to your gallery."
+          : saveResult === "shared"
+            ? "Save sheet opened. Sign in to keep it in the gallery."
+            : "Download started. Sign in to keep it in the gallery.",
       );
       playUiSound("success");
-    } catch {
-      setSaveStatus("Save failed. Please try again.");
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error
+          ? saveError.message
+          : "Save failed. Please try again.";
+
+      setSaveStatus(
+        localSaveResult
+          ? `Local save started, but gallery save failed: ${message}`
+          : message,
+      );
     } finally {
       setIsSaving(false);
     }
@@ -888,6 +951,11 @@ export default function PixelCatApp() {
           >
             Pick a photo and turn your cat into a soft little bead charm.
           </p>
+
+          <AuthPanel
+            className="mt-5"
+            onAuthChange={setAuthSnapshot}
+          />
 
           <div
             className="mt-6 rounded-[22px] border-2 border-dashed border-[#a9c9ed] bg-[#f8fbff]/86 p-4 text-sm transition hover:-translate-y-0.5 hover:border-[#76a7e6] hover:shadow-[0_14px_30px_rgba(118,167,230,0.18)]"

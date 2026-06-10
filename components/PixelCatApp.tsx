@@ -830,58 +830,54 @@ export default function PixelCatApp() {
     setIsSaving(true);
     setSaveStatus(null);
     let localSaveResult: "downloaded" | "shared" | null = null;
+    let uploadedToGallery = false;
 
     try {
       const generatedImageBlob = await rendererRef.current.exportPngBlob();
-      const saveResult = await rendererRef.current.downloadPng();
-      localSaveResult = saveResult;
-      let uploadedToGallery = false;
       const analysisForSave =
         analysis ?? createClientFallbackAnalysis(photo?.name ?? "edited kitty");
 
+      const formData = new FormData();
+      const headers: HeadersInit = {};
+
+      formData.append("image", generatedImageBlob, "my-pixel-kitty.png");
+      formData.append("analysis", JSON.stringify(analysisForSave));
+      formData.append("furPlan", JSON.stringify(furPlan));
+      formData.append("accessoryPreset", accessoryPreset);
+      formData.append("faceFeaturePreset", faceFeaturePreset);
+      formData.append("backgroundColor", backgroundColor);
+      formData.append("sourcePhotoName", photo?.name ?? "edited-kitty.png");
+
       if (authSnapshot.accessToken) {
-        const formData = new FormData();
-
-        formData.append("image", generatedImageBlob, "my-pixel-kitty.png");
-        formData.append("analysis", JSON.stringify(analysisForSave));
-        formData.append("furPlan", JSON.stringify(furPlan));
-        formData.append("accessoryPreset", accessoryPreset);
-        formData.append("faceFeaturePreset", faceFeaturePreset);
-        formData.append("backgroundColor", backgroundColor);
-        formData.append("sourcePhotoName", photo?.name ?? "edited-kitty.png");
-
-        const response = await fetch("/api/generated-images", {
-          body: formData,
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${authSnapshot.accessToken}`,
-          },
-          method: "POST",
-        });
-        const data = (await response.json().catch(() => null)) as
-          | { ok: true }
-          | { ok: false; error?: string }
-          | null;
-
-        if (!response.ok || !data?.ok) {
-          throw new Error(
-            data?.ok === false && data.error
-              ? data.error
-              : "Could not save to your gallery.",
-          );
-        }
-
-        uploadedToGallery = true;
+        headers.Authorization = `Bearer ${authSnapshot.accessToken}`;
       }
 
+      const response = await fetch("/api/generated-images", {
+        body: formData,
+        cache: "no-store",
+        headers,
+        method: "POST",
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: true }
+        | { ok: false; error?: string }
+        | null;
+
+      if (!response.ok || !data?.ok) {
+        throw new Error(
+          data?.ok === false && data.error
+            ? data.error
+            : "Could not save to your gallery.",
+        );
+      }
+
+      uploadedToGallery = true;
+      const saveResult = await rendererRef.current.downloadPng();
+      localSaveResult = saveResult;
       setSaveStatus(
-        uploadedToGallery
-          ? saveResult === "shared"
-            ? "Save sheet opened, and your kitty is in the gallery."
-            : "Downloaded and saved to your gallery."
-          : saveResult === "shared"
-            ? "Save sheet opened. Sign in first to add it to the gallery."
-            : "Download started. Sign in first to add it to the gallery.",
+        saveResult === "shared"
+          ? "Save sheet opened, and your kitty is in the gallery."
+          : "Downloaded and saved to your gallery.",
       );
       playUiSound("success");
     } catch (saveError) {
@@ -891,9 +887,11 @@ export default function PixelCatApp() {
           : "Save failed. Please try again.";
 
       setSaveStatus(
-        localSaveResult
-          ? `Local save started, but gallery save failed: ${message}`
-          : message,
+        uploadedToGallery
+          ? `Saved to your gallery, but the download did not finish: ${message}`
+          : localSaveResult
+            ? `Local save started, but gallery save failed: ${message}`
+            : message,
       );
     } finally {
       setIsSaving(false);

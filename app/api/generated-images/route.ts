@@ -45,18 +45,23 @@ export async function POST(request: Request) {
   }
 
   const token = getBearerToken(request);
+  let userId: string = randomUUID();
+  let userEmail: string | null = null;
+  let storageOwner = "anonymous";
 
-  if (!token) {
-    return jsonError("Please sign in before saving to your gallery.", 401);
-  }
+  if (token) {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser(token);
-
-  if (userError || !user) {
-    return jsonError("Your login session expired. Please sign in again.", 401);
+    if (userError || !user) {
+      console.warn("Saving generated image anonymously because auth failed.", userError);
+    } else {
+      userId = user.id;
+      userEmail = user.email ?? null;
+      storageOwner = user.id;
+    }
   }
 
   const formData = await request.formData();
@@ -70,7 +75,7 @@ export async function POST(request: Request) {
     return jsonError("Only generated PNG images can be saved.", 400);
   }
 
-  const storagePath = `${user.id}/${Date.now()}-${randomUUID()}.png`;
+  const storagePath = `${storageOwner}/${Date.now()}-${randomUUID()}.png`;
   const imageBytes = await image.arrayBuffer();
 
   const { error: uploadError } = await supabase.storage
@@ -98,8 +103,8 @@ export async function POST(request: Request) {
       fur_region_plan: parseJsonField(formData.get("furPlan")),
       source_photo_name: formData.get("sourcePhotoName"),
       storage_path: storagePath,
-      user_email: user.email ?? null,
-      user_id: user.id,
+      user_email: userEmail,
+      user_id: userId,
     })
     .select("id, created_at")
     .single();
